@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Prédicteur Matchs Virtuels - Mobile Ready</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { font-family: Arial, sans-serif; margin:10px; background:#f4f4f9; color:#333; }
+h1 { text-align:center; color:#222; }
+input, select, button { padding:8px; margin:5px; width:90%; max-width:400px; border-radius:5px; border:1px solid #ccc; }
+button { cursor:pointer; background:#4CAF50; color:white; border:none; }
+button:hover { background:#45a049; }
+table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+th, td { border:1px solid #333; padding:8px; text-align:center; }
+th { background:#444; color:#fff; }
+tr.open { background:#e0ffe0; }  /* vert pour ouvert */
+tr.closed { background:#ffe0e0; } /* rouge pour fermé */
+@media(max-width:600px){ table, th, td { font-size:12px; } }
+</style>
+</head>
+<body>
+<h1>Prédicteur Matchs Virtuels</h1>
+
+<div style="text-align:center;">
+<label>Équipe :</label>
+<select id="team">
+<option>Barça</option>
+<option>Real</option>
+<option>Atlético</option>
+<option>Valence</option>
+</select><br>
+
+<label>Derniers scores (ex: 1-0,0-0,1-1,3-1,2-1) :</label><br>
+<input type="text" id="scores"><br>
+
+<label>Cote du prochain match :</label><br>
+<input type="number" step="0.01" id="cote"><br>
+
+<button onclick="predict()">Ajouter & Prédire</button>
+<button onclick="filterTeam()">Filtrer par équipe</button>
+<button onclick="filterCycle()">Filtrer par cycle</button>
+<button onclick="exportCSV()">Exporter CSV</button>
+</div>
+
+<table id="resultTable">
+<tr>
+<th>Équipe</th>
+<th>Score</th>
+<th>Type match</th>
+<th>Cycle probable</th>
+<th>Cote</th>
+<th>Pari conseillé</th>
+</tr>
+</table>
+
+<script>
+let history = JSON.parse(localStorage.getItem('matchHistory') || '[]');
+let currentFilterCycle = null;
+updateTable();
+
+function prediction(last_scores, cote){
+let lastMatch = last_scores[last_scores.length-1];
+let matchType = (lastMatch[0]>1 || lastMatch[1]>0) ? "🔴" : "🔵";
+let openCount = last_scores.slice(-4).filter(s=>s[0]>1 || s[1]>0).length;
+let cycle = openCount>=2 ? "Ouvert léger" : "Fermé";
+let pari = cote<1.65 ? "Score exact ou Under 2.5" : (cycle.startsWith("Ouvert") ? "Over 1.5 / BTTS" : "Score exact ou Under 2.5");
+return {matchType, cycle, pari};
+}
+
+function predict(){
+let team = document.getElementById("team").value;
+let scoresInput = document.getElementById("scores").value;
+let cote = parseFloat(document.getElementById("cote").value);
+try{
+let last_scores = scoresInput.split(',').map(s=>s.split('-').map(Number));
+let {matchType, cycle, pari} = prediction(last_scores, cote);
+let lastMatch = last_scores[last_scores.length-1];
+let entry={team, score:lastMatch, matchType, cycle, cote, pari};
+history.push(entry);
+localStorage.setItem('matchHistory', JSON.stringify(history));
+notify(entry);
+updateTable();
+}catch(e){alert("Erreur dans la saisie des scores ou cote");}
+}
+
+function updateTable(filterTeamName=null){
+let table = document.getElementById("resultTable");
+table.innerHTML="<tr><th>Équipe</th><th>Score</th><th>Type match</th><th>Cycle probable</th><th>Cote</th><th>Pari conseillé</th></tr>";
+history.forEach(entry=>{
+if(filterTeamName && entry.team!==filterTeamName) return;
+if(currentFilterCycle && entry.cycle!==currentFilterCycle) return;
+let row=table.insertRow(-1);
+row.className = entry.cycle.startsWith("Ouvert") ? "open" : "closed";
+row.insertCell(0).innerText=entry.team;
+row.insertCell(1).innerText=`${entry.score[0]}-${entry.score[1]}`;
+row.insertCell(2).innerText=entry.matchType;
+row.insertCell(3).innerText=entry.cycle;
+row.insertCell(4).innerText=entry.cote;
+row.insertCell(5).innerText=entry.pari;
+});
+}
+
+function filterTeam(){
+let team=document.getElementById("team").value;
+updateTable(team);
+}
+
+function filterCycle(){
+let cycle=prompt("Entrer cycle à filtrer: Ouvert léger / Fermé");
+if(cycle){currentFilterCycle=cycle; updateTable();}
+}
+
+function exportCSV(){
+let csv="Équipe,Score,Type match,Cycle,Cote,Pari conseillé\n";
+history.forEach(entry=>{csv+=`${entry.team},${entry.score[0]}-${entry.score[1]},${entry.matchType},${entry.cycle},${entry.cote},${entry.pari}\n`;});
+let blob=new Blob([csv],{type:"text/csv"});
+let link=document.createElement("a");
+link.href=URL.createObjectURL(blob);
+link.download="match_history.csv";
+link.click();
+}
+
+function notify(entry){
+if("Notification" in window && Notification.permission==="granted"){
+new Notification(`Nouvelle prédiction pour ${entry.team}`, {body:`Score: ${entry.score[0]}-${entry.score[1]} | Pari: ${entry.pari}`});
+}else if("Notification" in window){
+Notification.requestPermission();
+}
+}
+</script>
+</body>
+</html>
